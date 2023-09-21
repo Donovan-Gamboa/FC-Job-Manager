@@ -118,8 +118,8 @@ class JobManagementApp(QMainWindow):
         # Define a function to get the background color based on days in shop
         def get_background_color(days_in_shop):
             max_days = 30
-            r = int(255 - (255 * days_in_shop / max_days))
-            g = int(255 * days_in_shop / max_days)
+            g = int(255 - (255 * days_in_shop / max_days))
+            r = int(255 * days_in_shop / max_days)
             b = 0
             return r, g, b
 
