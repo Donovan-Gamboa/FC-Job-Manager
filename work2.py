@@ -1,8 +1,11 @@
 import sys
 import csv
+import pandas as pd
 from datetime import datetime
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QPushButton, QLineEdit, QDialog, QLabel, QHBoxLayout
 from PyQt5.QtGui import QColor, QFont
+from fpdf import FPDF
+
 
 class JobManagementApp(QMainWindow):
     def __init__(self):
@@ -45,6 +48,10 @@ class JobManagementApp(QMainWindow):
         self.search_button.clicked.connect(self.search_by_job_number)
         self.layout.addWidget(self.search_button)
 
+        self.print_pdf_button = QPushButton("Print PDF", self)
+        self.print_pdf_button.clicked.connect(self.print_pdf)
+        self.layout.addWidget(self.print_pdf_button)
+
         # Load and display data from the CSV file
         self.load_and_display_data()
 
@@ -59,6 +66,81 @@ class JobManagementApp(QMainWindow):
         self.search_button.setFont(font)
 
         self.showMaximized()
+
+    def print_pdf(self):
+        # Load data from the CSV file
+        data = self.load_data_from_csv("jobs.csv")
+
+        # Filter jobs that are not done
+        not_done_jobs = [job for job in data if job["Status"] == "Not Done"]
+
+        # Create a Pandas DataFrame from the filtered data
+        df = pd.DataFrame(not_done_jobs)
+
+        # Remove the time portion from the "Production Date"
+        df['Production Date'] = pd.to_datetime(df['Production Date']).dt.strftime('%Y-%m-%d')
+
+        # Calculate "Days In Shop" and add it to the DataFrame
+        df['Days In Shop'] = (pd.Timestamp.now() - pd.to_datetime(df['Production Date'])).dt.days
+
+        # Create a PDF document with landscape orientation
+        pdf = FPDF(orientation='L')  # Landscape orientation
+        pdf.add_page()
+        pdf.set_font("Arial", size=10)
+
+        # Initialize a list to store maximum column widths
+        max_col_widths = [pdf.get_string_width(col) + 6 for col in df.columns]  # 6 is for padding
+
+        # Iterate over the DataFrame to find the maximum width for each column
+        for _, row in df.iterrows():
+            for col in df.columns:
+                col_width = pdf.get_string_width(str(row[col])) + 6  # 6 is for padding
+                max_col_widths[df.columns.get_loc(col)] = max(max_col_widths[df.columns.get_loc(col)], col_width)
+
+        # Calculate the total page width
+        total_width = sum(max_col_widths)
+
+        # Calculate the column widths based on the maximum widths and total width
+        col_widths = [(w / total_width) * pdf.w for w in max_col_widths]
+
+        # Remove the "Status" column from the DataFrame
+        df = df.drop(columns=["Status"])
+
+        # Add a table to the PDF with adjusted column widths and text wrapping
+        pdf.set_fill_color(255, 255, 255)  # Set fill color to white
+        pdf.set_text_color(0, 0, 0)  # Set text color to black
+
+        # Print the header row
+        for col in df.columns:
+            pdf.cell(col_widths[df.columns.get_loc(col)], 10, txt=col, border=1, fill=1)
+        pdf.ln()
+
+        # Define a function to get the background color based on days in shop
+        def get_background_color(days_in_shop):
+            max_days = 30
+            r = int(255 - (255 * days_in_shop / max_days))
+            g = int(255 * days_in_shop / max_days)
+            b = 0
+            return r, g, b
+
+        # Print each job's data side by side with a color gradient for "Days In Shop"
+        for _, row in df.iterrows():
+            for col in df.columns:
+                cell_text = str(row[col])
+                # If the column is "Days In Shop," apply the background color gradient
+                if col == "Days In Shop":
+                    days_in_shop = int(row[col])
+                    r, g, b = get_background_color(days_in_shop)
+                    pdf.set_fill_color(r, g, b)
+                    pdf.cell(col_widths[df.columns.get_loc(col)], 10, txt=cell_text, border=1, fill=1)
+                    pdf.set_fill_color(255, 255, 255)  # Reset fill color to white
+                else:
+                    pdf.cell(col_widths[df.columns.get_loc(col)], 10, txt=cell_text, border=1)
+            pdf.ln()
+
+        # Save the PDF to a file
+        pdf_file_path = "not_done_jobs.pdf"
+        pdf.output(pdf_file_path)
 
     def load_and_display_data(self):
         # Load data from the CSV file
